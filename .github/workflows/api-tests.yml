@@ -1,0 +1,64 @@
+name: API Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *" # (optionnel) tous les jours à 06:00 UTC
+
+jobs:
+  run-cli-tests:
+    runs-on: ubuntu-latest
+
+    env:
+      BACKEND_URL: https://etude8-bible-api-production.up.railway.app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install tools (jq, curl)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      - name: Make scripts executable
+        run: |
+          chmod +x tests_cli.sh || true
+          chmod +x tests_asserts.sh || true
+          chmod +x per_verse_stats.py || true
+          chmod +x check_target_chars.py || true
+
+      - name: Sanity /health
+        run: |
+          curl -s "$BACKEND_URL/api/health" | jq .
+      
+      - name: Run CLI smoke tests
+        run: |
+          ./tests_cli.sh
+
+      - name: Run assertions suite
+        run: |
+          ./tests_asserts.sh
+
+      - name: Check target_chars ~500
+        run: |
+          curl -s -X POST "$BACKEND_URL/api/generate-verse-by-verse" \
+            -H "Content-Type: application/json" \
+            -d '{"passage":"Genese 1","enriched":true,"target_chars":500}' \
+            | ./check_target_chars.py 500 50
+
+      - name: Check target_chars ~2500
+        run: |
+          curl -s -X POST "$BACKEND_URL/api/generate-verse-by-verse" \
+            -H "Content-Type: application/json" \
+            -d '{"passage":"Genese 1","enriched":true,"target_chars":2500}' \
+            | ./check_target_chars.py 2500 40
